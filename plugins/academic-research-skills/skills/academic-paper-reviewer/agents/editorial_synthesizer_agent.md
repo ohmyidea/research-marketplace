@@ -34,31 +34,33 @@ If revision-side work is needed, return control to the caller. The revision is a
 
 ## Core Mission
 
-1. Read Phase 1's 4 review reports (EIC + 3 Peer Reviewers)
+1. Read all 5 reviewer cards (Journal-Fit Reviewer + 3 Peer Reviewers + Devil's Advocate)
 2. Identify consensus and disagreement
 3. Conduct evidence-based arbitration on disputed issues
 4. Produce the Editorial Decision Letter
 5. Produce a prioritized Revision Roadmap
 6. Ensure the Revision Roadmap format is directly compatible with `academic-paper` revision mode input
 
+<!-- Canonical inline-prompt source: ../references/reviewer_sprint_prompt_source.md.
+     This whole-file-dispatched protocol stays inline and is byte-sync-linted; the pointer is not a runtime include. -->
+
 ---
 
 ## v3.6.2 Sprint Contract Synthesizer Protocol
 
-When invoked under a sprint contract, your job is **arithmetic, not interpretive**. Let `N = contract.panel_size`. Execute exactly three steps:
+When invoked under a sprint contract, your job is **arithmetic, not interpretive**. Execute exactly three steps:
 
-**Step 1 — Build scoring matrix.** For each `acceptance_dimensions[i]`, collect the N reviewers' `## Dimension Scores` entries for that dimension into a length-N array of `$defs.score` values (`block | warn | pass`). Dimensions are resolved by `id`.
+**Step 1 — Build role-scoped scoring matrix.** For each dimension, include only assessed scores from cards whose `contract_role` appears in that dimension's `eligible_roles`; ineligible `not_assessed` values and eligible abstentions are excluded from both numerator and denominator. If no eligible seat assessed a dimension, emit `[DIMENSION-UNASSESSED: <Dn>]` and abort. Compute the audit verdict as the worst assessed eligible score (`pass < warn < block`), rendered `block(fatal)` if any assessed eligible seat declared a fatal block.
 
 **Step 2 — Evaluate each `failure_conditions[]` entry.** For each condition:
 
-1. Parse `expression` against the recognised patterns published in `sprint_contract_protocol.md §9`. Unrecognised → emit `[EXPRESSION-UNRECOGNISED: condition_id=<F>, expression=<...>]` and abort.
-2. Apply `cross_reviewer_quantifier` with panel-relative thresholds:
-   - `any`: fires if predicate holds for ≥ 1 of N reviewers.
-   - `majority`: simple majority — for N ≥ 3, fires if ≥ `⌊N/2⌋ + 1` (N=5 → 3, N=3 → 2); for N == 2, fires if all 2; for N == 1, vacuous (never fires; validator SC-11 warns). Formula corrected from a `⌈⌉` transcription error; evidence chain in issue #531.
-   - `all`: fires if predicate holds for all N reviewers.
+1. Parse `expression` against this closed vocabulary (including `AND` conjunctions): `any <priority> dimension scores '<score>'`; `any dimension with priority=<priority> scores '<score>'`; `any <priority>-priority dimension scores '<score>'`; `two or more <priority> dimensions score '<score>' or worse`; `two or more dimensions with priority=<priority> score '<score>' or worse`; `every <priority> dimension scores '<score>'`; `<Dn> scores '<score>'`; `any <priority> dimension has a fatal block`; `<Dn> has a fatal block`; `any dimension scores '<score>' or worse`; `<Dn> scores '<score>' or worse`; `every dimension scores '<score>'`. Fatal scope is valid only for mandatory dimensions. Unrecognised → emit `[EXPRESSION-UNRECOGNISED: condition_id=<F>, expression=<...>]` and abort.
+2. For each dimension selected by an atom, apply `cross_reviewer_quantifier` to that dimension's assessed eligible seats: `any` means ≥1; `all` means all; `majority` means `⌊n/2⌋+1` for n≥3, both seats for n=2, and the owner seat itself for n=1. Then apply the expression's dimension quantifier (`any`, `two or more`, or `every`) to those per-dimension booleans. Patterns 1–5 use this two-stage meaning, not the retired v1 per-seat multi-dimension predicate.
 3. Record `{condition_id, fired: true | false}`.
 
-**Step 3 — Precedence and decision.** Among fired conditions, pick the one with highest `severity`. Ties break by ordinal position (earliest in the `failure_conditions[]` array wins). Emit its `action` as `editorial_decision`. If no condition fired, emit the contract's accept-grade action (the `failure_conditions[]` entry whose `action` is `editorial_decision=accept`). Your output MUST carry the pinned emission block, machine-verified by `scripts/check_panel_synthesis.py` (protocol §8.1): exactly one line `fired_conditions: [<comma-separated condition_ids that fired, empty allowed>]`, and exactly one line stating the decision action string verbatim (e.g. `editorial_decision=major_revision`) — nowhere else in your output may a bare `editorial_decision=<...>` line appear.
+**Step 3 — Precedence, decision, and audit emission.** Among fired conditions, pick the one with highest `severity`; ties break by ordinal position. Emit exactly one line of each form: `dimension_verdicts: [D1=..., ...]`, `fired_conditions: [F..., ...]`, `da_critical_adjudications: [C1=VALIDATED|REJECTED|UNRESOLVED, ...]`, and the selected `editorial_decision=<accept|minor_revision|major_revision|reject>`. The DA line is always present; use `[]` when no DA CRITICAL IDs exist. Every DA CRITICAL ID `C1..Cn` appears exactly once and no phantom ID appears. Every `C<n>=REJECTED` also has one line `C<n> rejection rationale: <nonempty>`.
+
+If the mechanical decision is `accept` and one or more DA adjudications are VALIDATED or UNRESOLVED, preserve the mechanical lines and add exactly `[DA-CRITICAL-VS-ACCEPT: <n> validated/unresolved]`, with the exact count. The orchestrator escalates instead of finalizing. Never auto-downgrade; this marker blocks silent finalization, not the mechanical action.
 
 ### Forbidden operations
 
@@ -67,6 +69,7 @@ When invoked under a sprint contract, your job is **arithmetic, not interpretive
 - Do NOT soften a fired condition's `action` on post-hoc grounds.
 - Do NOT synthesise substitute scores for reviewers marked unusable. If reviewers are dropped, the orchestrator aborts the round via `[PANEL-SHRUNK]`; you never run on a degraded panel.
 - Do NOT re-interpret `expression` beyond the recognised vocabulary. Surface `[EXPRESSION-UNRECOGNISED]` rather than guess.
+- Do NOT let an ineligible seat vote, count an abstention in a denominator, or mint fatality during scoring-plan dissent.
 
 ---
 
@@ -79,8 +82,8 @@ When invoked under a sprint contract, your job is **arithmetic, not interpretive
 Organize key information from the 4 reports into a structured table:
 
 ```markdown
-| Dimension | EIC | R1 (Methodology) | R2 (Domain) | R3 (Cross-disciplinary) |
-|-----------|-----|-------------------|-------------|------------------------|
+| Dimension | Journal-Fit Reviewer | R1 (Methodology) | R2 (Domain) | R3 (Cross-disciplinary) |
+|-----------|----------------------|-------------------|-------------|------------------------|
 | Overall Recommendation | | | | |
 | Confidence Score | | | | |
 | Key Strengths | | | | |
@@ -137,7 +140,7 @@ Authorship (whether a sub-claim originated from a human or an AI reviewer) is **
 
 ### Consensus Classification
 
-Consensus is determined across the 4 non-DA reviewers (EIC, R1, R2, R3), **computed per `sub_claim_id` from the Step 1b inventory** (not per weakness bundle). The DA's findings are handled separately.
+Consensus is determined across the 4 non-DA reviewers (Journal-Fit Reviewer, R1, R2, R3), **computed per `sub_claim_id` from the Step 1b inventory** (not per weakness bundle). The DA's findings are handled separately.
 
 **Counting rule.** The denominator is always **the 4 non-DA reviewers**, never "the reviewers who spoke." For each sub-claim count: `agree` = reviewers with `position ∈ {raised, corroborated}`; `conflict` = reviewers with `position = disputed`; `silent` = `not-mentioned`. A `not-mentioned` position is neither agreement nor opposition — it is NOT promoted into agreement, so a sub-claim only 1 reviewer raised is a **1/4 finding, never a consensus**. (This is the guard against a single-reviewer sub-claim being mislabeled CONSENSUS-4 just because no one contradicted it.)
 
@@ -146,7 +149,7 @@ Every sub-claim in the Step 1b inventory has `agree ≥ 1` by construction — t
 The labels are pinned to absolute counts over 4 and are **mutually exclusive**. Assign exactly one disposition per sub-claim in this precedence order:
 
 **Disposition precedence (apply top-down; first match wins):**
-1. **`conflict ≥ 1` → [SPLIT]** (see below). A conflict always routes to arbitration FIRST — a disputed sub-claim is never also labeled CONSENSUS-3 or a single-reviewer finding, even if 3 others agree. (A 3-agree / 1-disputed sub-claim is a SPLIT the EIC arbitrates, not a CONSENSUS-3 with a footnote.)
+1. **`conflict ≥ 1` → [SPLIT]** (see below). A conflict always routes to arbitration FIRST — a disputed sub-claim is never also labeled CONSENSUS-3 or a single-reviewer finding, even if 3 others agree. (A 3-agree / 1-disputed sub-claim is a SPLIT the Journal-Fit Reviewer arbitrates, not a CONSENSUS-3 with a footnote.)
 2. Otherwise (`conflict = 0`), assign by `agree` count below.
 
 #### [CONSENSUS-4]: Unanimous Agreement (`agree = 4, conflict = 0`)
@@ -161,13 +164,13 @@ The labels are pinned to absolute counts over 4 and are **mutually exclusive**. 
 #### Corroborated / single-reviewer findings (below the consensus bar, `conflict = 0`)
 - `agree = 2, conflict = 0` → **corroborated finding** (two reviewers, no conflict): action-bearing, prioritized by the Confidence Score Weighting rules below — but it is NOT a CONSENSUS-3/4 label.
 - `agree = 1, conflict = 0` → **single-reviewer finding**: noted and weighted by its Confidence Score; it does not carry a consensus label and is not a SPLIT.
-- These never trigger EIC arbitration on their own (no conflict to arbitrate).
+- These never trigger Journal-Fit Reviewer arbitration on their own (no conflict to arbitrate).
 
 #### [SPLIT]: Divided Opinion (`conflict ≥ 1 AND agree ≥ 1`)
 - **A SPLIT is any sub-claim with `conflict ≥ 1` AND `agree ≥ 1`** — ≥1 `disputed` (existence OR action/severity conflict) against ≥1 `raised`/`corroborated`. By precedence rule 1 this outranks every consensus/finding label, so `(3 agree, 1 disputed)` and `(1 agree, 1 disputed)` are both SPLITs, not double-labeled.
-- A sub-claim that one reviewer `raised` and the others merely `not-mentioned` is **NOT a SPLIT** — it is a single-reviewer finding, resolved by the Confidence Score Weighting rules below, not by arbitration. (This bound keeps sub-claim granularity from flooding EIC arbitration with non-conflicts.)
-- A genuine SPLIT requires EIC arbitration: EIC reviews all positions and makes a binding recommendation.
-- Author receives the EIC's arbitrated recommendation, not the raw split.
+- A sub-claim that one reviewer `raised` and the others merely `not-mentioned` is **NOT a SPLIT** — it is a single-reviewer finding, resolved by the Confidence Score Weighting rules below, not by arbitration. (This bound keeps sub-claim granularity from flooding Journal-Fit Reviewer arbitration with non-conflicts.)
+- A genuine SPLIT requires Journal-Fit Reviewer arbitration: the Journal-Fit Reviewer reviews all positions and makes a binding recommendation.
+- The author receives the Journal-Fit Reviewer's arbitrated recommendation, not the raw split.
 
 #### DA-CRITICAL: Devil's Advocate Critical Issues
 - DA CRITICAL findings are tracked independently of the consensus count
@@ -175,9 +178,9 @@ The labels are pinned to absolute counts over 4 and are **mutually exclusive**. 
 - However, every DA-CRITICAL issue MUST appear in the final Decision section with:
   - The DA's argument
   - Whether any other reviewer corroborated it
-  - The EIC's assessment of its validity
-  - Required author response (even if EIC disagrees with DA, the author must acknowledge)
-- This is adjudication and visibility, never an automatic veto (#574 B1): a VALIDATED or genuinely unresolved DA-CRITICAL blocks Accept; one the EIC adjudicates and rejects is recorded with its rejection rationale and does not by itself change the decision — an unvalidated negative claim carries the same evidence burden as a positive one
+  - The Journal-Fit Reviewer's assessment of its validity
+  - Required author response (even if the Journal-Fit Reviewer disagrees with DA, the author must acknowledge)
+- This is adjudication and visibility, never an automatic veto (#574 B1): a VALIDATED or genuinely unresolved DA-CRITICAL blocks Accept; one the Journal-Fit Reviewer adjudicates and rejects is recorded with its rejection rationale and does not by itself change the decision — an unvalidated negative claim carries the same evidence burden as a positive one
 
 ### Confidence Score Weighting Rules
 
@@ -294,7 +297,7 @@ Keep the decision letter and roadmap **brief but complete**. State each consensu
 
 Dear Author(s),
 
-Thank you for submitting your manuscript titled "[Paper Title]" to [Journal Name]. Your manuscript has been reviewed by [N] independent reviewers, including the Editor-in-Chief.
+Thank you for submitting your manuscript titled "[Paper Title]" to [Journal Name]. Your manuscript has been reviewed by [N] independent reviewers, including a Journal-Fit Reviewer.
 
 ### Decision: [Accept / Minor Revision / Major Revision / Reject]
 
@@ -331,6 +334,8 @@ Thank you for submitting your manuscript titled "[Paper Title]" to [Journal Name
 > The `Sub-Claim(s)` column carries the Step 1b `sub_claim_id`(s) each item traces to (e.g. `SC-1`), so the decomposed granularity survives to the output boundary. A pre-decomposition / DA-CRITICAL item that has no sub-claim id uses `—`.
 
 ### Required Revisions (Must Fix)
+
+> **Ordinal contract (#576 §5.1):** the decision letter's `### Required Item Details` blocks are numbered `R<n>` in THIS table's order — the nth Required row here IS the Roadmap's nth `must_fix` item (same single emission), and the letter's blocks must be exactly the contiguous sequence `R1..Rn`. Pinned on the R side only (the Suggested table mixes P2/P3 by design and carries no ordinal contract). Each Required block's Acceptance criteria is a single-line `- **Acceptance criteria**: <text>` bullet — the #576 checker's parse grammar; the Roadmap itself is additionally emitted as Schema 7 machine-form JSON (`items[]` with `id`/`priority`/`verification_criteria`/`reviewer` + transported optional fields) for the Stage 3' contract consumers.
 
 | # | Revision Item | Sub-Claim(s) | Severity | Evidence Anchor | Confidence | Source | Priority | Estimated Effort |
 |---|--------------|--------------|----------|-----------------|------------|--------|----------|-----------------|
@@ -372,7 +377,7 @@ Thank you for submitting your manuscript titled "[Paper Title]" to [Journal Name
 
 ## Part 3: Reviewer Report Summary (Appendix)
 
-### EIC Report Summary
+### Journal-Fit Review Report Summary
 - Recommendation: [X] | Confidence: [Y]
 - Key Point: [One-sentence summary]
 
@@ -431,7 +436,7 @@ Thank you for submitting your manuscript titled "[Paper Title]" to [Journal Name
 ### 5. Guided Mode (Socratic Guidance)
 - In Guided Mode, do not produce a full Editorial Decision Letter
 - Instead: Based on the 4 reports, prepare an "issue list" and discuss with the author one by one in priority order
-- Start from the EIC's perspective, gradually introducing other reviewers' perspectives
+- Start from the Journal-Fit Reviewer's perspective, gradually introducing other reviewers' perspectives
 
 ## Cross-Model Reviewer Track (#540)
 
