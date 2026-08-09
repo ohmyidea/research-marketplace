@@ -50,6 +50,12 @@ Schemas for Material Passport input ports.
 
 - `passport/literature_corpus_entry.schema.json` (v3.6.4) — Schema 9 `literature_corpus[]`
   entries produced by user-written adapters.
+- `passport/bibliographic_integrity_signal.schema.json` (#678/#651) — v1.0
+  additive signal carrier plus v1.1 authoritative retraction-status rows,
+  including resolver disagreement/reinstatement, judgment context, freshness,
+  and opt-in finalizer policy eligibility. The separate
+  `retraction_status_cache_v1` namespace and pure resolver live in
+  `scripts/retraction_status.py`.
 - `passport/rejection_log.schema.json` (v3.6.4) — adapter output companion logging
   entries that could not be included in the corpus.
 - `passport/reset_ledger_entry.schema.json` (v3.6.3) — `reset_boundary[]` ledger entries
@@ -69,6 +75,72 @@ Schemas for Material Passport input ports.
   (`level`/`locators`/`note`, declaration-only). Deliberately a sidecar for the same
   reason as above: corpus entries MUST NOT carry human-read state (v3.6.8 firm rule 3).
   Audit/test-time validation only — the CLI stays dependency-light at runtime.
+
+## Human-subjects correspondence contract (#668)
+
+`human_subjects/committee_correspondence.schema.json` defines the standalone
+`academic-paper revision-coach` committee-correspondence variant. It binds every
+confirmed source comment to one concern record while preserving the entire UTF-8
+letter byte-for-byte, including non-comment material. The contract carries
+multi-label actions, explicit authority/provenance, optional profile enrichment,
+fixed unresolved placeholders, the #665 administrative boundary, and no model
+priority or severity.
+
+Validate a bundle with:
+
+```bash
+python scripts/check_committee_correspondence.py \
+  committee_correspondence/<source-sha12>/concern_tracker.json
+```
+
+The checker recomputes file/segment hashes, contiguous byte coverage, exact
+comment-to-concern accounting, source order, full-permutation working views, and
+response-skeleton coverage. Spec:
+`docs/design/2026-08-08-668-committee-correspondence-spec.md`.
+
+## Human-subjects authority context (#666)
+
+The `human_subjects/` authority family keeps selection explicit and separates three
+closed artifacts:
+
+- `irb_context_record.schema.json` — the author-confirmed facts plus exact,
+  axis-qualified profile and overlay pins;
+- `authority_profile_registry.schema.json` — curator-owned, versioned, bounded
+  profiles and row-local source anchors;
+- `resolved_authority_context.schema.json` — a pointer-only, deterministic
+  three-valued applicability trace and downstream gate.
+
+V1 has exactly two axes: `review_ethics` and `data_protection`. Institutional and
+funder rules are additive overlays, never a third axis; display precedence cannot
+remove, merge, or satisfy a requirement. The shipped registry demonstrates the
+same contract with bounded US 45 CFR 46, Taiwan Human Subjects Research Act, and
+GDPR research subsets. It is not a completeness, compliance, pathway, exemption,
+or authorization claim.
+
+Resolve an explicit context offline, lint the registry alone, or replay-check a
+serialized result before consuming it:
+
+```bash
+python scripts/resolve_human_subjects_authority.py \
+  --context context.json \
+  --registry shared/human_subjects_authority_registry.json \
+  --output resolved-authority-context.json
+
+python scripts/resolve_human_subjects_authority.py \
+  --registry shared/human_subjects_authority_registry.json \
+  --check-registry
+
+python scripts/resolve_human_subjects_authority.py \
+  --context context.json \
+  --registry shared/human_subjects_authority_registry.json \
+  --check-resolved resolved-authority-context.json
+```
+
+The resolver is standard-library-only, opens only named files, evaluates a closed
+Strong-Kleene predicate AST, never infers a jurisdiction, and rejects duplicate
+JSON keys and non-finite numbers. Protocol:
+`shared/references/human_subjects_authority_protocol.md`. Spec:
+`docs/design/2026-08-09-666-human-subjects-authority-contract-spec.md`.
 
 ## Audit artifact contracts (v3.6.7 Step 6)
 
@@ -90,3 +162,36 @@ orchestrator agent reads at every per-agent audit gate.
   spec §3.7 A1 / A2 / A5 / A6.
 
 Spec: `docs/design/2026-04-30-ars-v3.6.7-step-6-orchestrator-hooks-spec.md` §3.
+
+## Review target contracts (#683)
+
+The `review_target/` family keeps target selection author-owned and separates it
+from deterministic criterion resolution:
+
+- `review_target_declaration.schema.json` — the closed author-confirmed discipline,
+  exact venue/track/contribution-type (or explicit no-venue fallback), overlay,
+  selection, precedence, and as-of input;
+- `criteria_registry.schema.json` — the versioned four-part authority registry with
+  criterion provenance, applicability/exclusions, freshness, and blocking policy;
+- `review_target_context.schema.json` — the pointer-only resolved profile, three
+  independent outcome dimensions, parallel conflicts, fallback state, and stable
+  digests.
+
+`shared/review_criteria_registry.json` intentionally ships only a field-general
+baseline. It does not present remembered or synthetic journal rules as official
+venue guidance. Exact venue × track × contribution-type behavior is covered by
+synthetic fixtures.
+
+Resolve a declaration and optionally emit the Phase 0/1 Target Criteria Brief:
+
+```bash
+python scripts/resolve_review_target_context.py \
+  --context declaration.json \
+  --output review-target-context.json \
+  --brief target-criteria-brief.md
+```
+
+The resolver is standard-library-only and opens only the named context and registry
+inputs. It never reads manuscript content, infers a venue, averages interdisciplinary
+criteria, or applies adaptive numeric weights. Spec:
+`docs/design/2026-08-08-683-review-target-context-spec.md`.
