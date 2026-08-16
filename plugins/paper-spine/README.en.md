@@ -323,3 +323,8 @@ python src/scripts/paperspine_update.py --check-only
 ## License
 
 MIT License. See [LICENSE](LICENSE).
+
+## Contributors
+
+- [Wubin2023](https://github.com/WUBING2023) — Creator, core contributor, and maintainer of PaperSpine across V1–V4, leading its design, development, and continued evolution.
+- [ZHOUYUNCHEN](https://github.com/ZHOUYUNCHEN) — Early V4 collaborator.

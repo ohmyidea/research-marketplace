@@ -13,6 +13,22 @@ and content class that would be sent, then obtain explicit user consent. An
 environment variable alone is not consent to upload user content. If consent is
 not granted, continue with single-model verification.
 
+**Citation-only ChatGPT-subscription transport (#630):** A fourth, deliberately
+narrow transport is available only for the one-reference citation-integrity calls
+in Stage 2.5 / 4.5. Setting `ARS_CROSS_MODEL_TRANSPORT=codex` selects the contained
+Codex app-server adapter described below. It does not authorize or implement DA,
+Reviewer 2, calibration, re-review judgment, design-freeze, editorial-decision, or
+generic handoff calls; those paths continue to require their documented provider
+API credentials. The selector is closed: unset or `api` keeps the existing API
+route, `codex` selects this citation-only route, and every other value fails visibly
+without falling back.
+
+This runtime boundary does not forbid a separately preregistered, offline
+held-out suite from choosing Codex CLI as its subject transport. In particular,
+the #684 constructive-value plan is a synthetic evaluation with its own frozen
+call plan, USD 0 API ceiling, and human expert labels; it is not a generic
+reviewer/DA handoff and must not call this citation adapter with reviewer data.
+
 ## Why Cross-Model Verification
 
 A stress test of 68 AI-generated citations found 31% had problems — and all passed three rounds of same-model integrity checks. The root cause: the verifying AI and the generating AI share the same training data distribution, so they share the same blind spots. A different model (trained on overlapping but not identical data, with different RLHF tuning) can catch errors that the primary model systematically misses.
@@ -37,6 +53,7 @@ A stress test of 68 AI-generated citations found 31% had problems — and all pa
 |----------|-------------------|------------------------------------------|-------|
 | Xiaomi MiMo | `mimo-v2.5-pro` | `https://token-plan-cn.xiaomimimo.com/v1` | Set `ARS_OPENAI_COMPAT_API_KEY` + `ARS_CROSS_MODEL`. Ungrounded: positive verdicts never count as citation agreement. |
 | DeepSeek | `deepseek-v4-pro` | `https://api.deepseek.com/v1` | Set `ARS_OPENAI_COMPAT_API_KEY` + `ARS_CROSS_MODEL`. Ungrounded. |
+| MiniMax | `MiniMax-M3` | `https://api.minimax.io/v1` | Set `ARS_OPENAI_COMPAT_API_KEY` + `ARS_CROSS_MODEL`. Ungrounded. Regional endpoints: `https://api.minimax.io/v1` (global) or `https://api.minimaxi.com/v1` (China). |
 | Any OpenAI-compatible | any non-`gpt-*`/`gemini-*` id | any `/v1/chat/completions` endpoint | Routing is governed solely by `ARS_OPENAI_COMPAT_BASE_URL`; the model id must NOT match a first-party prefix or it takes the grounded first-party route instead. |
 
 > **Compatible providers are ungrounded.** They expose no hosted web-search tool, so there is no grounding evidence behind a verdict. A positive `VERIFIED` is downgraded to `NOT_SEARCHED` and never counts as agreement in citation verification; a `NOT_FOUND`/`MISMATCH` survives as a disagreement. They ARE first-class for Devil's Advocate critique (which needs no grounding) — but a DA finding from any provider is an adversarial hypothesis, not standalone evidence, unless independently sourced.
@@ -67,9 +84,9 @@ You need API keys from at least one additional provider. ARS itself runs inside 
 2. Create a new API key
 3. Copy the key (starts with `AIza`)
 
-**OpenAI-compatible providers (MiMo / DeepSeek / self-hosted):**
-1. Get an API key from your provider (e.g. [platform.deepseek.com](https://platform.deepseek.com) or the Xiaomi MiMo platform)
-2. Note the provider's API root including `/v1` (e.g. `https://api.deepseek.com/v1`)
+**OpenAI-compatible providers (MiMo / DeepSeek / MiniMax / self-hosted):**
+1. Get an API key from your provider (e.g. [platform.deepseek.com](https://platform.deepseek.com), the Xiaomi MiMo platform, or [platform.minimax.io](https://platform.minimax.io))
+2. Note the provider's API root including `/v1` (e.g. `https://api.deepseek.com/v1`; MiniMax global `https://api.minimax.io/v1` or China `https://api.minimaxi.com/v1`)
 3. The key goes in `ARS_OPENAI_COMPAT_API_KEY` and the endpoint in `ARS_OPENAI_COMPAT_BASE_URL` — NOT in `OPENAI_API_KEY`/`OPENAI_BASE_URL` (your real OpenAI key is never sent to a third-party endpoint)
 4. The compatible model id (`ARS_CROSS_MODEL`) must NOT begin with a `gpt-` or `gemini-` prefix. Any such id is claimed by the first-party grounded route, so a self-hosted compatible model named that way would be routed to the (unavailable) first-party path instead of your compatible endpoint.
 
@@ -94,14 +111,58 @@ export ARS_CROSS_MODEL="gpt-5.5"
 export GOOGLE_AI_API_KEY="<your-google-ai-api-key>"
 export ARS_CROSS_MODEL="gemini-3.1-pro-preview"
 
-# --- Option C: OpenAI-compatible provider (MiMo / DeepSeek / self-hosted) — UNGROUNDED ---
+# --- Option C: OpenAI-compatible provider (MiMo / DeepSeek / MiniMax / self-hosted) — UNGROUNDED ---
 # Uses a DEDICATED key; your real OPENAI_API_KEY is never sent to a third-party endpoint.
+# Example: DeepSeek (global). MiniMax example: BASE_URL "https://api.minimax.io/v1",
+# ARS_CROSS_MODEL "MiniMax-M3" (China endpoint: "https://api.minimaxi.com/v1").
 export ARS_OPENAI_COMPAT_BASE_URL="https://api.deepseek.com/v1"   # API root incl. /v1
 export ARS_OPENAI_COMPAT_API_KEY="<your-provider-api-key>"
 export ARS_CROSS_MODEL="deepseek-v4-pro"                          # provider id, NOT gpt-*/gemini-*
 ```
 
 Then reload: `source ~/.zshrc`
+
+### ChatGPT subscription option — citation integrity only
+
+Users already authenticated to Codex with a ChatGPT subscription may select the
+contained citation adapter without supplying `OPENAI_API_KEY`. This is not a
+general API-key replacement and does not activate any non-citation cross-model
+surface. Codex CLI 0.147.0 or newer is required; `codex login status` must return
+exactly `Logged in using ChatGPT`. A custom `CODEX_HOME` is honored consistently
+by detection and execution.
+
+```bash
+# Citation-integrity calls only. General DA/reviewer/judgment calls remain on API transport.
+export ARS_CROSS_MODEL_TRANSPORT="codex"
+export ARS_CROSS_MODEL="gpt-5.5"
+
+python3 scripts/cross_model_codex_transport.py detect
+# The producer sends one closed codex_citation_request/1.0 object on stdin:
+printf '%s' "$CITATION_REQUEST_JSON" | scripts/cross_model_codex_verify.sh
+```
+
+The adapter launches an ephemeral app-server thread from an empty working root,
+copies only `auth.json` into a private temporary `CODEX_HOME`, strips credential
+environment variables, sets read-only sandboxing with approvals disabled, exposes
+no dynamic tools or workspace roots, and disables local execution/file/app/plugin/
+skill/browser/agent capabilities. It accepts only the closed request schema and
+emits only the closed receipt schema under `shared/contracts/cross_model/`; it
+never accepts a path or caller-authored prompt. Authentication detection reports
+the mode only—credentials never enter the receipt or diagnostic output.
+
+Grounding authority is the app-server `webSearch.results[]` event, not the model's
+text and not a URL echoed from the request. Every positive source receipt binds an
+exact canonical HTTPS URL to the search item id, result index, and canonical result
+digest. A reference-bound search with no matching work may yield `NOT_FOUND`; a
+missing/malformed search, unrelated query, unbound source, multiple final answer,
+forbidden tool event, or wrong event shape fails closed to `NOT_SEARCHED`. The
+ordinary `codex exec --json` projection is intentionally not used because it does
+not preserve the structured standalone-search results needed for that binding.
+
+`scripts/cross_model_smoke_test_codex.sh` is a manual live smoke using public
+Vaswani et al. citation metadata. It consumes subscription/model/network capacity,
+so CI never invokes it; run it only after consenting to that live call. CI uses a
+fake Codex app-server and checked-in event fixtures exclusively.
 
 ### Step 3: Verify Setup
 
@@ -304,7 +365,27 @@ Checkpoint decisions are judgment, not lookup — an ungrounded/compatible provi
 
 ## API Call Patterns
 
-Three patterns are documented below. The first two (OpenAI and Gemini) are first-party and share the same contract: enable the provider's hosted web-search tool, and **gate the model's text on proof that a search actually happened** — no grounding evidence (an OpenAI `web_search_call` item / a Gemini `groundingMetadata` block) emits `NOT_SEARCHED` and the text is discarded, so this guard, not the prompt wording, is what prevents a from-memory guess being laundered into `VERIFIED`. Both first-party web-search tools are hosted/server-side: one request, no client-side tool-call round-trip. The third (OpenAI-compatible) is ungrounded by construction: it has no web-search tool, so the handler downgrades positive verdicts to `NOT_SEARCHED` and lets rejections through, and a compatible verdict never counts as a grounded agreement. `PROMPT` holds the single-reference verification prompt from step 3.
+Four patterns are documented below. The first is the citation-only Codex subscription adapter; the next two (OpenAI and Gemini) are first-party API routes and share the same contract: enable the provider's hosted web-search tool, and **gate the model's text on proof that a search actually happened** — no grounding evidence (an OpenAI `web_search_call` item / a Gemini `groundingMetadata` block) emits `NOT_SEARCHED` and the text is discarded, so this guard, not the prompt wording, is what prevents a from-memory guess being laundered into `VERIFIED`. Both first-party web-search tools are hosted/server-side: one request, no client-side tool-call round-trip. The fourth (OpenAI-compatible) is ungrounded by construction: it has no web-search tool, so the handler downgrades positive verdicts to `NOT_SEARCHED` and lets rejections through, and a compatible verdict never counts as a grounded agreement. `PROMPT` holds the single-reference verification prompt from step 3 for API routes; the Codex adapter instead accepts its closed request object.
+
+### Codex app-server (ChatGPT subscription; citation integrity only)
+
+When and only when `ARS_CROSS_MODEL_TRANSPORT=codex`, the Stage 2.5 / 4.5
+integrity producer constructs one `ars-codex-citation-request/1.0` JSON object per
+selected reference (`request_id`, exact `reference_text`, exact
+`citation_context`) and invokes `scripts/cross_model_codex_verify.sh` on stdin.
+It validates the one-line response against
+`codex_citation_receipt.schema.json` before reading `verdict`, `searched`,
+`reason_code`, or bound `sources[]`. Nonzero exit is a transport error; a valid
+`NOT_SEARCHED` receipt is an ungrounded result and follows the existing separate
+handling. No other agent or checkpoint may consume this adapter.
+
+The runtime drives app-server v2 rather than `codex exec --json`: only the former
+retains the structured standalone-search result objects needed for exact source
+binding. The minimum-privilege, auth-attestation, event-grammar, and containment
+contract is normative in
+`docs/design/2026-08-11-630-codex-subscription-citation-transport-spec.md` and
+machine-checked by the #630 test suite. The Bash entrypoints use syntax compatible
+with macOS Bash 3.2.
 
 ### OpenAI (GPT-5.5 / GPT-5.5 Pro / GPT-5.6 Sol)
 
@@ -390,7 +471,7 @@ fi
 
 > **Reasoning effort (OpenAI only):** when `ARS_CROSS_MODEL_REASONING_EFFORT` is set, the payload passes it as `reasoning.effort`, making the effort a verification run uses visible and reproducible. When it is **unset, the field is omitted entirely and the provider's own default for the chosen model applies** — defaults differ across the lineup (GPT-5.6 documents `medium`; other ids carry their own), so forcing one value here would silently change behavior for existing setups. Citation lookup is search-bound, not reasoning-bound, so higher efforts mostly buy latency and cost; set the variable deliberately (never silently run at `xhigh`) if a run shows shallow search behavior. The value is passed through unvalidated (the API rejects unknown values): GPT-5.5 accepts up to `xhigh`, GPT-5.6 adds `max`.
 
-### OpenAI-Compatible API (MiMo, DeepSeek, self-hosted) — ungrounded
+### OpenAI-Compatible API (MiMo, DeepSeek, MiniMax, self-hosted) — ungrounded
 
 When `CROSS_MODEL_AVAILABLE=openai_compatible`, use the **Chat Completions API** at
 `ARS_OPENAI_COMPAT_BASE_URL`, authenticated with the dedicated `ARS_OPENAI_COMPAT_API_KEY`.
@@ -470,6 +551,13 @@ if ! command -v jq &>/dev/null; then
   echo "WARNING: jq not installed. Cross-model API calls will use python3 fallback."
 fi
 
+case "${ARS_CROSS_MODEL_TRANSPORT:-api}" in
+  codex)
+    # Citation-integrity availability only. This does not make any DA/reviewer/
+    # judgment transport available. The detector shares auth/model/version logic
+    # with the production verifier and honors a custom CODEX_HOME.
+    python3 scripts/cross_model_codex_transport.py detect ;;
+  api)
 if [ -n "$ARS_CROSS_MODEL" ]; then
   # PRECEDENCE: a first-party model id ALWAYS takes the grounded route, even if
   # ARS_OPENAI_COMPAT_BASE_URL is set. This prevents a grounded->ungrounded downgrade. ANY gpt-*
@@ -532,9 +620,20 @@ if [ -n "$ARS_CROSS_MODEL" ]; then
 else
   echo "CROSS_MODEL_AVAILABLE=none"
 fi
+    ;;
+  *)
+    echo "CROSS-MODEL-ERROR: invalid ARS_CROSS_MODEL_TRANSPORT selector"
+    echo "CROSS_MODEL_AVAILABLE=none"
+    ;;
+esac
 ```
 
-If `ARS_CROSS_MODEL` is set but the corresponding API key is missing or the model name is unsupported, the agent should warn the user and proceed with single-model verification.
+If the API route is selected and `ARS_CROSS_MODEL` is set but the corresponding
+API key is missing or the model name is unsupported, the agent should warn the
+user and proceed with single-model verification. If the citation-only `codex`
+route is selected, consume the detector's closed status instead; an invalid
+transport selector is a visible configuration error and never falls through to
+an API route.
 
 ### Promotion Bakeoff (provisional → validated → recommended default)
 

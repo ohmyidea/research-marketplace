@@ -1,6 +1,6 @@
 # ARS-Codex
 
-[![Version](https://img.shields.io/badge/version-v0.1.24-blue)](VERSION)
+[![Version](https://img.shields.io/badge/version-v0.1.25-blue)](VERSION)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/license-CC%20BY--NC%204.0-lightgrey)](https://creativecommons.org/licenses/by-nc/4.0/)
 [![Sponsor](https://img.shields.io/badge/sponsor-Buy%20Me%20a%20Coffee-orange?logo=buy-me-a-coffee)](https://buymeacoffee.com/crucify020v)
 
@@ -16,6 +16,11 @@ skills/academic-research-suite/
   SKILL.md
   manifest.json
   agents/openai.yaml
+  codex/
+    full-runtime-manifest.json
+    agents/
+    hooks/
+    scripts/
   ars/
     deep-research/
     academic-paper/
@@ -41,20 +46,21 @@ skills/academic-research-suite/
 
 ## 版本管理
 
-本 ARS-Codex 打包版本为 `0.1.24`。repo 根目录的 `VERSION` 文件、`skills/academic-research-suite/SKILL.md` 中的元数据版本，以及 `skills/academic-research-suite/manifest.json` 中的 `adapter_version` 独立追踪 Codex 打包版本，与内嵌的 ARS 套件版本无关。内嵌的上游版本通过 commit 记录在 `manifest.source_repositories[]` 中。
+本 ARS-Codex 打包版本为 `0.1.25`。repo 根目录的 `VERSION` 文件、`skills/academic-research-suite/SKILL.md` 中的元数据版本，以及 `skills/academic-research-suite/manifest.json` 中的 `adapter_version` 独立追踪 Codex 打包版本，与内嵌的 ARS 套件版本无关。内嵌的上游版本通过 commit 记录在 `manifest.source_repositories[]` 中。
 
 打包层面的变更汇总在 [`CHANGELOG.md`](CHANGELOG.md) 中。
 
-当前内嵌的 ARS 源码追踪至
-`Imbad0202/academic-research-skills@5769d7b51adfba45593ad95721436fd114aaa735`
-（`v3.19.0` 之后的上游 `main`，2026-08-06；套件版本仍为 3.19.0）。内嵌内容新增
-reviewer 硬化系列（角色范围评分契约与弃权机制、带类型的证据锚点与覆盖
-receipt、Stage 3' 三门 re-review 预承诺契约、算术 receipt 语法与其
-deterministic 计算器、空异议规则）、新的 reviewer held-out 评测集与裁定
-cohort、医学期刊披露政策与 fail-closed 渲染、中文文献 resolver client，以及
-CARE／STARD 2015／TRIPOD+AI 精要指引。v3.19 的 PDF preflight、阅读范围声明、
-claim-drift 防护，v3.18 的 cross-model reviewer／judge、缓存重验、风险分层
-检查与既有最小权限契约仍完整保留。
+当前内嵌的 ARS 源码追踪至 `v3.20.0` 发行版：
+`Imbad0202/academic-research-skills@3af9f03d5aadb0bca51af1440f20b5cbf97d6dba`
+（2026-08-14）。该版本新增证据绑定的 review／revision 契约、经作者确认的
+review target／criteria binding、明确的 human-subjects authority 边界，以及
+用途受限且必须取得同意的 Codex citation transport。另内嵌可选的 sandbox PDF
+内容分类器；其输出仅为 advisory，不会取代结构性 PDF preflight。既有的引用、
+完整性、最小权限、degradation 与 transport 防护仍完整保留。
+
+上游嵌套的 `.github/` 工作流和根级 `agents/` 镜像保留用于可追溯性和自测，
+但不是仓库级 CI 或 Codex 入口；`.claude/` 与 `.claude-plugin/` 下的
+Claude/plugin 加载文件按设计排除。
 
 ## 安装 ARS-Codex Plugin
 
@@ -94,18 +100,22 @@ Codex Desktop plugin 缓存也能正确注册 bundled skill。
 以确保公开访问和带凭据的 GitHub 访问均可正常工作：
 
 ```bash
-python "$HOME/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py" \
+python3 "$HOME/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py" \
   --repo Imbad0202/academic-research-skills-codex \
   --ref main \
   --path skills/academic-research-suite \
   --method git
 ```
 
+在 macOS 和许多 Linux 系统上，Python 3 暴露为 `python3` 而不是 `python`。
+如果你的系统只有 `python` 命令且它是 Python 3，请用 `python` 替换上述命令中的
+`python3`。
+
 更新已有安装：
 
 ```bash
 rm -rf "$HOME/.codex/skills/academic-research-suite"
-python "$HOME/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py" \
+python3 "$HOME/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py" \
   --repo Imbad0202/academic-research-skills-codex \
   --ref main \
   --path skills/academic-research-suite \
@@ -120,6 +130,7 @@ python "$HOME/.codex/skills/.system/skill-installer/scripts/install-skill-from-g
 
 - [Codex 配置说明](skills/academic-research-suite/ars/docs/SETUP.md) 涵盖安装、`ars-*` 别名、可选工具、Material Passport 适配器，以及不支持的 Claude plugin 功能。
 - [Codex 架构说明](skills/academic-research-suite/ars/docs/ARCHITECTURE.md) 解释了 ARS pipeline 的逻辑结构及 Codex 运行时覆盖层。
+- [可选 full-runtime adapter](CODEX_FULL_RUNTIME_ADAPTER.md) 记录了默认关闭的 planner、Codex agent-team 模板和 hook pack。
 
 ## 使用方法
 
@@ -171,6 +182,10 @@ ars-plan my paper on AI governance in universities.
 | `/ars-format-convert` | `ars-format-convert` | `academic-paper` `format-convert` 模式 |
 | `/ars-revision-coach` | `ars-revision-coach` | `academic-paper` `revision-coach` 模式 |
 | `/ars-revision` | `ars-revision` | `academic-paper` `revision` 模式 |
+| `/ars-reviewer` | `ars-reviewer` | `academic-paper-reviewer` 完整模式 |
+| `/ars-mark-read` | `ars-mark-read` | 为活动 Material Passport 中的引用键记录人工阅读信号 |
+| `/ars-unmark-read` | `ars-unmark-read` | 撤销先前的人工阅读信号 |
+| `/ars-cache-invalidate` | `ars-cache-invalidate` | 使某个引用键的缓存验证条目失效 |
 | `/ars-full` | `ars-full` | `academic-pipeline` 完整 workflow |
 
 ### 使用模式
@@ -242,6 +257,14 @@ codex exec --ephemeral --sandbox read-only \
   'Use $academic-research-suite. Router smoke test only. User request to classify: I want to write a paper on AI adoption in higher education quality assurance, but I do not yet have a clear research question. According to the academic-research-suite router, classify the workflow and mode.'
 ```
 
+维护者质量闸门：
+
+```bash
+python3 skills/academic-research-suite/codex/scripts/ars_codex_quality_gates.py all --json
+```
+
+预期：每个报告的闸门均为 `"ok": true`。
+
 ### 非阻塞的 Codex 警告
 
 以下 Codex 消息并不意味着 ARS 安装失败：
@@ -254,17 +277,27 @@ codex exec --ephemeral --sandbox read-only \
 ARS 最初是为 Claude Code 编写的。在本 Codex 打包版本中：
 
 - 内嵌的 `agents/*.md` 文件用作角色和阶段提示词。
+- Codex 专属的 `codex/` 目录包含一个可选的 full-runtime adapter profile。它默认关闭，不会改变正常的内联路由。
 - 内嵌的 `commands/ars-*.md` 文件仅作为提示词模板。Codex 不会将它们注册为斜杠命令。
 - 内嵌的 `hooks/hooks.json` 文件仅为上游可追溯性而保留。Codex 不会从此包安装 Claude Code hook。
 - Codex 不会自动生成后台 agent，除非你明确要求委派或并行 agent 工作。
 - Web/源码验证使用 Codex 浏览功能，在涉及当前或外部事实时必须引用来源。
 - 跨模型验证默认禁用。在本 Codex 打包版本中明确请求时，请按 `ars/shared/cross_model_verification.md` 配置 provider，先说明 provider、model 和将发送的内容类别，并在任何外部上传前取得用户明确同意。外部审阅者通过已配置的 provider API 调用，不会用当前 Codex model 模拟。
+- `ARS_MODEL_TIERING` 默认未设置。Codex adapter 保留上游的 judgment/execution 分类，但仅在 runtime 支持显式按次 dispatch 模型覆盖时应用 `economy` 或 `quality-boost`；否则报告 no-op 并保持当前模型。
+- 受保护的一级 agent `tools:` allowlist 仍是最小权限角色边界。被派发的 checkpoint owner 不会获得 Bash 或网络传输能力；任何经明确同意的跨模型调用都由派发的 Codex 上下文拥有。
+- `[CROSS-MODEL-HANDOFF v1]` 块是传输请求，不是交付物。dispatcher 会验证它、只发送其 payload、按机械式结果路由处理，并把判断工作交还给原始 owner。
+- 在审阅者 `full` 模式下，显式配置且经同意的跨模型运行会替换现有 Reviewer 2 席位，绝不会增加第六位审阅者。复审应用独立的 Priority-1 judge 通道并记录 provenance（来源信息）。单一族执行和 provider fallback 会被披露。
+- `ARS_CACHE_STALE_ADVISORY_DAYS` 控制仅作建议的缓存过期阈值，`ARS_CACHE_REVALIDATE=1` 则选择启用实时书目重新验证。这些设置仅在运行程序化引用闸门时生效；单独的过期行永远不会让完整性闸门失败。
+- 本地读取的 PDF 在信任页面锚点之前会运行 v3.19 `pdf_read_preflight.py`。`FAIL` 与 `UNAVAILABLE` 保持区分，缺失解析器或 sidecar 绝不会被视为 `PASS`。
+- `ars-mark-read` 可以记录可选的、用户声明的 `read_scope`。未知或部分覆盖保持可见；Codex 不会推断全文阅读。
+- 修订轮次保留 v3.19 的主张强度阶梯，以及确定性的数字、引用、标记和受保护术语守恒检查，作为 advisory-first 防护。
+- 上游 v3.18 的 SessionStart 更新检查器已内嵌，但不会作为 Codex hook 安装或执行。插件用户通过 `codex plugin marketplace upgrade ars-codex` 后接 `codex plugin add ars-codex@ars-codex` 更新；直接安装的 skill 仍通过重装或拉取本仓库更新。
 - 上游对"新 Claude Code 会话"的引用在本包中等同于新的 Codex 对话；Material Passport 重置语义仍然适用。
 - 如果引用、来源、统计数据或期刊政策无法验证，Codex 应将其标记为未验证，而非编造支撑依据。
 
-### ARS v3.19+ 功能对等
+### ARS v3.20.0 功能对等
 
-本包旨在 Codex 具有等效概念的地方，提供与上游 ARS `main`（`5769d7b`，`v3.19.0` 之后；套件版本 3.19.0）相同的用户侧 workflow 内容。
+本包旨在 Codex 具有等效概念的地方，提供与上游 ARS `v3.20.0`（`3af9f03d5aadb0bca51af1440f20b5cbf97d6dba`）相同的用户侧 workflow 内容。
 
 | 上游 ARS 功能 | Codex 打包版本行为 |
 |---|---|
@@ -272,16 +305,21 @@ ARS 最初是为 Claude Code 编写的。在本 Codex 打包版本中：
 | `/ars-*` 斜杠命令 | 通过 skill router 以 `ars-*` 别名模拟；非原生斜杠命令 |
 | 从 `skills/` 符号链接自动发现的四个上游 skill | 单个 Codex router skill 选择 workflow 并读取内嵌的 workflow `WORKFLOW.md` 文件 |
 | Plugin 附带的 agent | Agent 文件用作角色/阶段提示词；Codex 内联运行，除非用户明确要求委派子 agent |
-| `model: opus` / `model: sonnet` 命令路由 | 视为 Claude 元数据；Codex 使用当前活动模型 |
+| 可选 Codex full-runtime profile | Planner、agent-team 模板和 hook pack 位于 `skills/academic-research-suite/codex/`；默认关闭 |
+| 重型命令（`ars-full`、`ars-reviewer`、`ars-revision-coach`）省略 `model:`，轻量模式保留 `model: sonnet` | 重型命令继承当前 Codex 会话模型；轻量模式的 `sonnet` 作为上游 Claude 元数据保留，不会覆盖会话模型 |
 | `ARS_MODEL_TIERING=economy\|quality-boost` | 保留 judgment/execution 分类；仅在 Codex 支持逐次 dispatch 指定模型时应用，否则保持当前模型 |
 | 受保护 agent 的 `tools:` allowlist | 保留为最小权限角色边界；被委派的 owner 不获得 Bash 或网络 transport |
 | Canonical cross-model handoff envelope | Dispatcher 验证 envelope、取得同意后仅传输 payload，并遵循封闭的结果路由 contract |
+| 用途受限的 Codex citation transport | 仅在明确配置、请求并取得同意后用于窄范围 citation-integrity 检查 |
+| 证据绑定的 review／revision | 保留持久 evidence row、已确认 criteria、非排序 roadmap、author adjudication 与 revision-evidence bundle |
+| Review criteria 与 human-subjects authority | Venue／criteria 和 ethics／data-protection authority 必须由用户确认；Codex 不推断或模拟批准 |
+| 可选 PDF 内容分类器 | sandbox classifier 是 opt-in advisory，不能覆盖结构性 PDF preflight 结果 |
 | Cross-model Reviewer 2 与 re-review judge | 仅在 provider 已配置且取得内容传输同意时启用；保留固定席位、Judge Record、单一模型族与 fallback 披露 |
 | 缓存陈旧 advisory 与实时重验 | 默认使用本地缓存；陈旧行仅为 advisory，`ARS_CACHE_REVALIDATE=1` 才启用实时书目重验 |
 | 风险分层主张、范围与新颖性检查 | 保留高影响主张优先抽样，以及不阻断 gate 的 scope 与 search-bounded novelty advisory |
-| 本地 PDF 读取完整性 preflight | 内嵌 pypdf preflight 与 sidecar contract；parser 不可用或修复警告会明确保留为 `UNAVAILABLE` advisory |
+| 本地 PDF 读取完整性 preflight | 结构性 pypdf preflight 与 sidecar contract 保持默认；parser 不可用或修复警告会明确保留为 `UNAVAILABLE` advisory，上述 v3.20 classifier 仍仅为 opt-in |
 | 人工阅读范围声明 | 保留用户拥有的可选 `read_scope` 与章节 locator；部分覆盖不会被视为全文阅读 |
-| 修订主张漂移防护 | 内嵌主张强度阶梯、revision-evidence bundle、deterministic token-conservation checker 与 held-out 测量集及测试 |
+| 修订主张漂移防护 | v3.20 非排序 roadmap 与 author-adjudication contract，配合主张强度阶梯、revision-evidence bundle、deterministic token-conservation checker 和 held-out 测量集 |
 | Panel／degradation／pipeline-boundary 可执行检查 | 连同 hermetic 测试一起内嵌，并由可选 full-runtime manifest 暴露 |
 | SessionStart 和 SubagentStop hook（含更新提醒） | 仅为可追溯性而内嵌保留；Codex 不安装或执行 Claude hook |
 | Plugin marketplace 更新 | 执行 `codex plugin marketplace upgrade ars-codex` 后重新添加 `ars-codex@ars-codex`；直接安装的 skill 仍通过重新安装或 pull 更新 |
@@ -344,6 +382,10 @@ skills/academic-research-suite/ars/shared/
 **Cheng-I Wu** — ARS 套件及本 Codex 发行版的维护者。
 
 **Codex** — 在维护者的指导下协助完成 Codex adapter 打包、router 策略加固、测试修复和发布就绪审查。
+
+**[vinschger](https://github.com/vinschger)** — 报告了 `python` 与 `python3` 带来的新手安装摩擦，从而促成了针对 macOS 和其他环境的更清晰的安装说明。
+
+**[Joker2377](https://github.com/Joker2377)** — 在 issue 讨论中帮助回答社区安装问题，并澄清了新手安装步骤。
 
 内嵌上游 ARS 的贡献者名单详见
 [`skills/academic-research-suite/ars/README.md`](skills/academic-research-suite/ars/README.md#contributors)。
